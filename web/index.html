@@ -118,7 +118,59 @@
   </section>
 
   <section class="card">
-    <h2>5. API keys</h2>
+    <h2>5. Quiz question generator (DOCX queue)</h2>
+    <p class="hint">
+      Add one or more quiz documents. Each block must start with <code>Question N</code>, followed by the question body, four <code>a./b./c./d.</code> answer lines, a <code>Correct Answer:</code> line, an <code>Explanation:</code> paragraph (correct option), and three <code>Option X is incorrect because …</code> paragraphs.
+      For each question the system synthesises four voices — Voice 1 (number + question), Voice 2 (answers + correct line), Voice 3 (correct explanation), Voice 4 (incorrect explanations) — then merges them with a configurable pause and saves a single <code>Question N</code> file per question.
+      Uses the same voice and output format (WAV / MP3) selected in section 3.
+    </p>
+    <label class="batch-folder-row">Output folder
+      <div class="batch-folder-actions">
+        <button type="button" id="qPickFolder">Select output folder</button>
+      </div>
+      <div id="qFolderPath" class="batch-folder">No folder selected. Uses the browser's folder picker (Chrome / Edge, HTTPS or localhost).</div>
+    </label>
+    <div class="batch-add-row" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button type="button" id="qAddDoc">Add question doc…</button>
+      <span class="hint" style="margin:0;">Add as many as you want. Each row's subfolder name is editable until generation starts.</span>
+      <input type="file" id="qDocxInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;" />
+    </div>
+    <label style="display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;">
+      Pause between voices: <span id="qPauseVal">1.50</span>s
+      <input type="range" id="qPause" min="0.0" max="5.0" step="0.1" value="1.5" style="flex:1; min-width:140px;" />
+    </label>
+    <div class="msg" id="qParseMsg"></div>
+    <div class="batch-progress">
+      <div id="qProgressSummary" class="batch-progress-line"></div>
+      <div id="qProgressCurrent" class="batch-progress-current"></div>
+    </div>
+    <div class="batch-toolbar">
+      <button type="button" id="qBtnStart" disabled>Start question generate</button>
+      <button type="button" id="qBtnPause" class="ghost" disabled>Pause</button>
+      <button type="button" id="qBtnResume" class="ghost" disabled>Resume</button>
+      <button type="button" id="qBtnCancel" class="ghost" disabled>Cancel queue</button>
+      <button type="button" id="qBtnClear" class="ghost" disabled>Clear queue</button>
+    </div>
+    <div class="msg" id="qBatchMsg"></div>
+    <div class="batch-table-wrap">
+      <table class="batch-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Document</th>
+            <th>Subfolder name</th>
+            <th>Questions</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="qQueueBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>6. API keys</h2>
     <p class="hint">
       Use these keys to access this tool from other machines via HTTP.
       Send <code>X-API-Key: &lt;key&gt;</code> on every request.
@@ -156,5 +208,6 @@
 
 <script src="app.js"></script>
 <script src="/batch_generate.js"></script>
+<script src="/question_generate.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# Voice Clone Tool
+# Voice Clone + Question Tool
 
 A self-hosted web tool for cloning voices from an audio sample and generating
 high-quality English text-to-speech from any length of text, using
@@ -9,7 +9,10 @@ Features:
 - Persistent voice library with unique voice IDs
 - Generate speech from unlimited text (auto chunked + stitched)
 - Speed control (0.5x – 2.0x)
-- Web UI + JSON API (ready for future API-key auth)
+- WAV / MP3 output
+- Multi-document DOCX queue (Format A flat, Format B with `Animation N` subfolders, with `Voice Name:` filename overrides for Format A)
+- **Quiz question generator**: drop a `.docx` of `Question N` blocks (question body, four `a./b./c./d.` answers, `Correct Answer:`, `Explanation:`, three `Option X is incorrect …`) and the tool synthesises four voices per question, merges them with a configurable inter-section pause, and saves one `Question N.<ext>` file per question into a fresh per-doc subfolder.
+- Web UI + JSON API (X-API-Key auth)
 - Runs locally or on any server
 
 ---

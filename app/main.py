@@ -1,7 +1,9 @@
 """
-FastAPI server: web UI + JSON API for voice cloning and generation.
+FastAPI server: web UI + JSON API for voice cloning, batch DOCX generation,
+and quiz-question audio generation.
 """
 import io
+import json
 import os
 import re
 import tempfile
@@ -17,8 +19,10 @@ from .tts_engine import VoiceEngine
 from . import voice_store
 from . import auth
 from . import batch_docx
+from . import question_docx
+from . import question_audio
 
-app = FastAPI(title="Voice Clone Tool", version="1.1.0")
+app = FastAPI(title="Voice Clone + Question Tool", version="1.2.0")
 
 # Split pasted “many questions” text into separate TTS jobs (own line, exact match).
 QUESTION_SPLIT_MARKER = "<<<QUESTION>>>"
@@ -86,6 +90,14 @@ def _js():
 def _batch_js():
     return Response(
         content=open(os.path.join(WEB_DIR, "batch_generate.js")).read(),
+        media_type="application/javascript",
+    )
+
+
+@app.get("/question_generate.js")
+def _question_js():
+    return Response(
+        content=open(os.path.join(WEB_DIR, "question_generate.js")).read(),
         media_type="application/javascript",
     )
 
@@ -293,6 +305,72 @@ async def api_batch_parse_docx(
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"Could not read document: {e}")
+
+
+# ---------- Quiz questions (protected) ----------
+@app.post("/api/questions/parse-docx", dependencies=[Depends(auth.require_auth)])
+async def api_questions_parse_docx(file: UploadFile = File(...)):
+    """
+    Parse a quiz-question .docx into structured questions with pre-built voice scripts.
+    """
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".docx"):
+        raise HTTPException(400, "Upload a .docx file.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file.")
+    try:
+        return question_docx.parse_question_docx(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"Could not read document: {e}")
+
+
+@app.post("/api/questions/generate-one", dependencies=[Depends(auth.require_auth)])
+async def api_questions_generate_one(
+    voice_id: str = Form(...),
+    question_json: str = Form(...),
+    speed: float = Form(1.0),
+    format: str = Form("wav"),
+    pause_seconds: float = Form(question_audio.DEFAULT_PAUSE_SEC),
+):
+    """
+    Synthesise a single question's four voices and return one merged audio clip.
+    """
+    if engine is None:
+        raise HTTPException(503, "engine not ready")
+    ref = voice_store.get_reference_wav(voice_id)
+    if not ref:
+        raise HTTPException(404, "voice_id not found")
+    fmt = _normalize_format(format)
+    try:
+        question = json.loads(question_json)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "question_json must be valid JSON")
+    if not isinstance(question, dict):
+        raise HTTPException(400, "question_json must be a JSON object")
+    try:
+        data, media_type, ext = question_audio.generate_question_audio(
+            engine,
+            speaker_wav=ref,
+            question=question,
+            speed=speed,
+            fmt=fmt,
+            pause_sec=pause_seconds,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"generation failed: {e}")
+    qnum = question.get("number", "x")
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="Question {qnum}.{ext}"'},
+    )
 
 
 # ---------- Health (public) ----------
