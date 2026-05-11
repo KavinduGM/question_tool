@@ -19,11 +19,17 @@
   <section class="card">
     <h2>1. Clone a new voice</h2>
     <p class="hint">
-      For best fidelity, upload <strong>3–5 minutes</strong> of the target speaker
+      For best fidelity, upload <strong>10–15 minutes</strong> of the target speaker
       reading varied sentences (mix of statements and questions, neutral mood, no
-      background music/other voices). Up to 5 minutes is kept; the server splits
-      it into ~30 s segments and XTTS averages the speaker embedding across all
-      of them — that averaging is the main lever for cloning accuracy.
+      background music or other voices). Up to 15 minutes is kept; the server
+      cleans it (silence-trim + loudness-normalise), cuts it on natural pauses
+      into ~30 s segments, then quality-ranks them and keeps the best 10–12.
+      XTTS averages the speaker embedding across that set — that averaging is
+      the main lever for cloning accuracy in zero-shot mode.
+      <br /><br />
+      Realistic ceiling: zero-shot XTTS reaches roughly <strong>85–90% perceived
+      similarity</strong> with great reference audio. Reaching 95%+ requires
+      fine-tuning the model on the speaker, which is a separate (heavier) workflow.
     </p>
     <form id="cloneForm">
       <label>Voice name
