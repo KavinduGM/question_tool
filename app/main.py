@@ -337,7 +337,11 @@ async def api_questions_generate_one(
 ):
     """
     Synthesise a single question's four voices and return one merged audio clip.
+    Per-voice TTS failures are caught and substituted with silence; only a *total*
+    failure (every voice broken or zero output) returns an HTTP error.
     """
+    import traceback as _tb
+
     if engine is None:
         raise HTTPException(503, "engine not ready")
     ref = voice_store.get_reference_wav(voice_id)
@@ -350,8 +354,9 @@ async def api_questions_generate_one(
         raise HTTPException(400, "question_json must be valid JSON")
     if not isinstance(question, dict):
         raise HTTPException(400, "question_json must be a JSON object")
+    qnum = question.get("number", "x")
     try:
-        data, media_type, ext = question_audio.generate_question_audio(
+        data, media_type, ext, failures = question_audio.generate_question_audio(
             engine,
             speaker_wav=ref,
             question=question,
@@ -360,17 +365,24 @@ async def api_questions_generate_one(
             pause_sec=pause_seconds,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        print(f"[/api/questions/generate-one] Q{qnum} ValueError: {e}")
+        raise HTTPException(400, f"Q{qnum}: {e}")
     except RuntimeError as e:
-        raise HTTPException(500, str(e))
+        print(f"[/api/questions/generate-one] Q{qnum} RuntimeError: {e}")
+        raise HTTPException(500, f"Q{qnum}: {e}")
     except Exception as e:
-        raise HTTPException(500, f"generation failed: {e}")
-    qnum = question.get("number", "x")
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="Question {qnum}.{ext}"'},
-    )
+        print(f"[/api/questions/generate-one] Q{qnum} unexpected error:")
+        _tb.print_exc()
+        raise HTTPException(500, f"Q{qnum} generation failed: {e}")
+
+    headers = {"Content-Disposition": f'attachment; filename="Question {qnum}.{ext}"'}
+    if failures:
+        # Comma-joined and ASCII-safe for HTTP header transport.
+        joined = "; ".join(failures)
+        safe = joined.encode("ascii", "replace").decode("ascii")
+        headers["X-Question-Voice-Failures"] = safe[:900]
+        print(f"[/api/questions/generate-one] Q{qnum} produced with degraded voices: {joined}")
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 # ---------- Health (public) ----------

@@ -89,13 +89,39 @@
     throw new Error("Could not find a unique filename");
   }
 
+  // Sanity floor in bytes. A bare WAV header is ~44 bytes; anything under this
+  // would be unplayable. The smallest legitimate question we ever produce is
+  // ≈0.5s of 24 kHz mono PCM_16 ≈ 24 KB, so this is comfortably below normal output.
+  const MIN_AUDIO_BYTES = 1024;
+
   async function writeQuestionBlob(docDirHandle, qNumber, ext, blob) {
+    if (!blob || blob.size < MIN_AUDIO_BYTES) {
+      // Don't even create the file. A 0-byte ".wav" causes Windows error 0xC00D36C4.
+      throw new Error(
+        `Server returned ${blob ? blob.size : 0} bytes — too small to be a real audio file.`
+      );
+    }
     const fileSeg = fsSafeSegment(`Question ${qNumber}.${ext}`);
     const unique = await uniqueFileNameFn(docDirHandle, fileSeg);
-    const fh = await docDirHandle.getFileHandle(unique, { create: true });
-    const w = await fh.createWritable();
-    await w.write(blob);
-    await w.close();
+    let fh;
+    try {
+      fh = await docDirHandle.getFileHandle(unique, { create: true });
+      const w = await fh.createWritable();
+      try {
+        await w.write(blob);
+        await w.close();
+      } catch (writeErr) {
+        // Try to close the writable to release the handle, then drop the empty file
+        // so we never leave a 0-byte stub behind.
+        try { await w.close(); } catch { /* ignore */ }
+        try { await docDirHandle.removeEntry(unique); } catch { /* ignore */ }
+        throw writeErr;
+      }
+    } catch (err) {
+      // If getFileHandle/create succeeded but something later threw, also try cleanup.
+      if (fh) { try { await docDirHandle.removeEntry(unique); } catch { /* ignore */ } }
+      throw err;
+    }
     return unique;
   }
 
@@ -150,7 +176,9 @@
       try { msg = decodeError(await res.json(), msg); } catch { /* ignore */ }
       throw new Error(msg);
     }
-    return res.blob();
+    const blob = await res.blob();
+    const partial = res.headers.get("X-Question-Voice-Failures") || "";
+    return { blob, partial };
   }
 
   // ---------- rendering ----------
@@ -168,7 +196,7 @@
         : `<span>${escapeHtml(d.folderName)}${d.actualFolder && d.actualFolder !== d.folderName ? ` <span style="color:var(--muted);">(saved as ${escapeHtml(d.actualFolder)})</span>` : ""}</span>`;
       const total = d.parsed ? d.parsed.count : 0;
       const qInfo = d.parsed
-        ? `${d.completed} / ${total}${d.failed ? ` · ${d.failed} failed` : ""}`
+        ? `${d.completed} / ${total}${d.failed ? ` · ${d.failed} failed` : ""}${d.partialCount ? ` · ${d.partialCount} partial` : ""}`
         : "—";
       const errHtml = d.error ? `<div class="batch-err">${escapeHtml(d.error)}</div>` : "";
       const removable = !qRunning;
@@ -291,6 +319,7 @@
       d.error = null;
       d.completed = 0;
       d.failed = 0;
+      d.partialCount = 0;
       d.currentQuestion = null;
       renderQueue();
       updateProgressPanel();
@@ -333,9 +362,13 @@
         updateProgressPanel();
 
         try {
-          const blob = await generateOneQuestion(voiceId, q, speed, fmt, pauseSec);
+          const { blob, partial } = await generateOneQuestion(voiceId, q, speed, fmt, pauseSec);
           await writeQuestionBlob(docDh, q.number, fmt, blob);
           d.completed++;
+          if (partial) {
+            d.partialCount = (d.partialCount || 0) + 1;
+            console.warn(`[Q${q.number}] saved with degraded voice(s): ${partial}`);
+          }
         } catch (e) {
           console.error("Question failed in", d.folderName, "Q" + q.number, e);
           d.failed++;
@@ -373,10 +406,12 @@
     const cancelledDocs = qDocQueue.filter((d) => d.status === "cancelled").length;
     const totalQs = qDocQueue.reduce((s, d) => s + (d.completed || 0), 0);
     const failedQs = qDocQueue.reduce((s, d) => s + (d.failed || 0), 0);
+    const partialQs = qDocQueue.reduce((s, d) => s + (d.partialCount || 0), 0);
     if (msgEl) {
       const head = cancelled ? "Stopped." : "Question batch finished.";
       const cancelledPart = cancelledDocs ? `, ${cancelledDocs} cancelled` : "";
-      msgEl.textContent = `${head} ${okDocs} doc(s) complete, ${failedDocs} failed${cancelledPart} · ${totalQs} question(s) saved, ${failedQs} failed.`;
+      const partialPart = partialQs ? ` · ${partialQs} saved with a degraded voice (see console for details)` : "";
+      msgEl.textContent = `${head} ${okDocs} doc(s) complete, ${failedDocs} failed${cancelledPart} · ${totalQs} question(s) saved, ${failedQs} failed${partialPart}.`;
       msgEl.className = (failedDocs || failedQs || cancelled) ? "msg err" : "msg ok";
     }
   }
