@@ -47,7 +47,7 @@ def voice_texts(question: dict) -> List[str]:
 
 def _render_one(
     engine: VoiceEngine,
-    speaker_wav: str,
+    speaker_wav,
     text: str,
     speed: float,
     qnum,
@@ -90,7 +90,7 @@ def _render_one(
 
 def generate_question_audio(
     engine: VoiceEngine,
-    speaker_wav: str,
+    speaker_wav,
     question: dict,
     speed: float,
     fmt: str,

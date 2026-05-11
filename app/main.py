@@ -102,6 +102,17 @@ def _question_js():
     )
 
 
+@app.get("/API.md")
+def _api_md():
+    md_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "API.md")
+    if not os.path.isfile(md_path):
+        raise HTTPException(404, "API.md not found")
+    return Response(
+        content=open(md_path).read(),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
@@ -188,7 +199,7 @@ async def api_generate(
 ):
     if engine is None:
         raise HTTPException(503, "engine not ready")
-    ref = voice_store.get_reference_wav(voice_id)
+    ref = voice_store.get_reference_paths(voice_id)
     if not ref:
         raise HTTPException(404, "voice_id not found")
     if not text.strip():
@@ -233,7 +244,7 @@ async def api_generate_batch(
     """
     if engine is None:
         raise HTTPException(503, "engine not ready")
-    ref = voice_store.get_reference_wav(voice_id)
+    ref = voice_store.get_reference_paths(voice_id)
     if not ref:
         raise HTTPException(404, "voice_id not found")
     raw = (text or "").strip()
@@ -344,7 +355,7 @@ async def api_questions_generate_one(
 
     if engine is None:
         raise HTTPException(503, "engine not ready")
-    ref = voice_store.get_reference_wav(voice_id)
+    ref = voice_store.get_reference_paths(voice_id)
     if not ref:
         raise HTTPException(404, "voice_id not found")
     fmt = _normalize_format(format)

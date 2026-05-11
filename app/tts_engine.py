@@ -184,11 +184,14 @@ class VoiceEngine:
     def generate(
         self,
         text: str,
-        speaker_wav: str,
+        speaker_wav,
         speed: float = 1.0,
     ) -> tuple[np.ndarray, int]:
         """
         Generate speech audio from text using the given reference wav.
+        `speaker_wav` may be a single path *or a list of paths* — Coqui XTTS averages
+        the speaker embedding across multiple clips, which is the main lever for
+        boosting cloning fidelity with extra reference material.
         English only. Use <break /> or <break time="…" /> between sections (default pause 1.5s).
         Returns (float32 waveform mono, sample_rate).
         """

@@ -101,10 +101,13 @@ async function refreshVoices() {
   for (const v of voices) {
     const row = document.createElement("div");
     row.className = "voice";
+    const refInfo = (v.reference_seconds || v.segment_count)
+      ? ` · ${v.reference_seconds ? v.reference_seconds.toFixed(0) + "s ref" : ""}${v.segment_count ? `, ${v.segment_count} segment${v.segment_count === 1 ? "" : "s"}` : ""}`
+      : "";
     row.innerHTML = `
       <div class="info">
         <div class="name">${escapeHtml(v.name)}${v.description ? ` <span style="color:var(--muted);font-weight:400;">— ${escapeHtml(v.description)}</span>` : ""}</div>
-        <div class="meta">${v.voice_id}</div>
+        <div class="meta">${v.voice_id}${refInfo}</div>
       </div>
       <button class="del" data-id="${v.voice_id}">Delete</button>
     `;
@@ -314,6 +317,21 @@ $("#genBtnZip").addEventListener("click", async () => {
 // Exposed for batch_generate.js (same-origin script load order)
 window.vctApi = api;
 window.vctShowLogin = showLogin;
+
+// ---------- API curl snippet ----------
+function renderApiCurlSnippet() {
+  const el = document.getElementById("apiCurlSnippet");
+  if (!el) return;
+  const base = window.location.origin;
+  el.textContent = `curl -X POST "${base}/api/generate" \\
+  -H "X-API-Key: YOUR_KEY" \\
+  -F voice_id=YOUR_VOICE_ID \\
+  -F text="Hello from my video tool." \\
+  -F speed=1.0 \\
+  -F format=mp3 \\
+  --output narration.mp3`;
+}
+renderApiCurlSnippet();
 
 // ---------- init ----------
 async function init() {

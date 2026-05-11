@@ -18,6 +18,13 @@
 
   <section class="card">
     <h2>1. Clone a new voice</h2>
+    <p class="hint">
+      For best fidelity, upload <strong>3–5 minutes</strong> of the target speaker
+      reading varied sentences (mix of statements and questions, neutral mood, no
+      background music/other voices). Up to 5 minutes is kept; the server splits
+      it into ~30 s segments and XTTS averages the speaker embedding across all
+      of them — that averaging is the main lever for cloning accuracy.
+    </p>
     <form id="cloneForm">
       <label>Voice name
         <input type="text" name="name" required placeholder="e.g. Narrator A" />
@@ -25,7 +32,7 @@
       <label>Description (optional)
         <input type="text" name="description" placeholder="deep calm male voice" />
       </label>
-      <label>Reference audio (wav / mp3 / m4a, 10s–20min)
+      <label>Reference audio (wav / mp3 / m4a, up to 5 min after cleanup)
         <input type="file" name="file" accept="audio/*" required />
       </label>
       <button type="submit" id="cloneBtn">Clone Voice</button>
@@ -172,15 +179,25 @@
   <section class="card">
     <h2>6. API keys</h2>
     <p class="hint">
-      Use these keys to access this tool from other machines via HTTP.
-      Send <code>X-API-Key: &lt;key&gt;</code> on every request.
+      Use these keys to access this tool from other machines (e.g. your video
+      generator). Send <code>X-API-Key: &lt;key&gt;</code> on every request. Full
+      reference: <a href="/API.md" target="_blank">API.md</a> · Auto schema:
+      <a href="/docs" target="_blank">/docs</a>.
     </p>
     <form id="keyForm" class="inline">
-      <input type="text" name="name" placeholder="Key name (e.g. 'batch tool')" required />
+      <input type="text" name="name" placeholder="Key name (e.g. 'video tool')" required />
       <button type="submit" id="keyBtn">Create key</button>
     </form>
     <div class="msg" id="keyMsg"></div>
     <div id="keysList" class="voices" style="margin-top:14px;"></div>
+    <details style="margin-top:18px;">
+      <summary style="cursor:pointer;">Show a ready-to-copy <code>curl</code> for this server</summary>
+      <p class="hint" style="margin-top:10px;">
+        Replace <code>YOUR_KEY</code> and <code>YOUR_VOICE_ID</code> with the values from the panels above.
+        The base URL is auto-filled with the address you're viewing this page on.
+      </p>
+      <pre id="apiCurlSnippet" style="white-space:pre-wrap; background:rgba(0,0,0,0.25); padding:10px; border-radius:6px;"></pre>
+    </details>
   </section>
 </div>
 
