@@ -28,7 +28,18 @@ from docx.text.paragraph import Paragraph
 
 MAX_QUESTIONS = 500
 
-_QUESTION_HEADER_RE = re.compile(r"^\s*Question\s+(\d+)\b", re.IGNORECASE)
+# A question block is opened by either:
+#   "Question 7"  /  "Question 7."  /  "Question  7:"   ← legacy explicit form
+#   "7"           /  "7."           /  "7)"             ← bare-number form (used
+#                                                         when generating audio
+#                                                         in "Number only" mode)
+# A bare-number header MUST sit alone on its line (with at most a trailing
+# .  )  : or whitespace) so we don't accidentally swallow things like
+# "1. FIFO algorithm" inside an answer block.
+_QUESTION_HEADER_RE = re.compile(
+    r"^\s*(?:Question\s+)?(\d+)\s*[\.\)\:]?\s*$",
+    re.IGNORECASE,
+)
 _ANSWER_RE = re.compile(r"^\s*([a-dA-D])\s*[\.\)]\s+(.+?)\s*$")
 _CORRECT_ANSWER_RE = re.compile(r"^\s*Correct\s+Answer\s*:\s*(.*)$", re.IGNORECASE)
 _EXPLANATION_PREFIX_RE = re.compile(r"^\s*Explanation\s*:\s*(.*)$", re.IGNORECASE)
@@ -249,7 +260,10 @@ def parse_question_docx(file_bytes: bytes) -> dict:
         blocks.append(current)
 
     if not blocks:
-        raise ValueError("No 'Question N' headers found in document.")
+        raise ValueError(
+            "No question headers found. Each block must start with either "
+            "'Question N' or just a bare number ('1', '1.', '1)') on its own line."
+        )
     if len(blocks) > MAX_QUESTIONS:
         raise ValueError(f"Too many questions ({len(blocks)}); maximum is {MAX_QUESTIONS}.")
 
