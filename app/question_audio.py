@@ -25,6 +25,12 @@ MAX_PAUSE_SEC = 10.0
 # fail loudly than write a 44-byte WAV stub Windows can't play.
 _MIN_FINAL_SAMPLES = 12_000
 
+# How Voice 1 (the intro) is built:
+#   "full"   → "Question <number-spelled>. <question text>"  (default; filename "Question N.<ext>")
+#   "number" → "<number-spelled>."                            (no question body; filename "N.<ext>")
+INTRO_STYLES = ("full", "number")
+DEFAULT_INTRO_STYLE = "full"
+
 log = logging.getLogger(__name__)
 
 
@@ -34,11 +40,66 @@ def _silence(seconds: float, sample_rate: int) -> np.ndarray:
     return np.zeros(n, dtype=np.float32)
 
 
-def voice_texts(question: dict) -> List[str]:
+# ---- number → words (English, up to 999,999) ----------------------------------
+_ONES = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen",
+]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+
+def _under_hundred(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    t, o = divmod(n, 10)
+    return _TENS[t] if o == 0 else f"{_TENS[t]}-{_ONES[o]}"
+
+
+def _under_thousand(n: int) -> str:
+    if n < 100:
+        return _under_hundred(n)
+    h, r = divmod(n, 100)
+    return f"{_ONES[h]} hundred" if r == 0 else f"{_ONES[h]} hundred {_under_hundred(r)}"
+
+
+def number_to_words(n) -> str:
+    """Spell a non-negative integer 0–999,999 in English. Falls back to str(n)."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if n < 0 or n >= 1_000_000:
+        return str(n)
+    if n < 1000:
+        return _under_thousand(n)
+    thousands, rest = divmod(n, 1000)
+    head = f"{_under_thousand(thousands)} thousand"
+    return head if rest == 0 else f"{head} {_under_thousand(rest)}"
+
+
+def _voice1_for_style(question: dict, intro_style: str) -> str:
+    number = question.get("number", "?")
+    body = (question.get("question_text") or "").strip()
+    spoken_number = number_to_words(number) if isinstance(number, int) or (
+        isinstance(number, str) and number.isdigit()
+    ) else str(number)
+    if intro_style == "number":
+        # Just the number on its own, no "Question" prefix and no body. XTTS
+        # behaves much better on natural English than on bare digits, so we
+        # always pronounce it as words.
+        return f"{spoken_number}."
+    # "full" — the default
+    if body:
+        return f"Question {spoken_number}. {body}"
+    return f"Question {spoken_number}."
+
+
+def voice_texts(question: dict, intro_style: str = DEFAULT_INTRO_STYLE) -> List[str]:
     """Return the four voice scripts in order for a parsed question dict."""
     vt = question.get("voice_texts") or {}
     return [
-        (vt.get("voice1") or "").strip(),
+        _voice1_for_style(question, intro_style),
         (vt.get("voice2") or "").strip(),
         (vt.get("voice3") or "").strip(),
         (vt.get("voice4") or "").strip(),
@@ -95,13 +156,17 @@ def generate_question_audio(
     speed: float,
     fmt: str,
     pause_sec: float = DEFAULT_PAUSE_SEC,
+    intro_style: str = DEFAULT_INTRO_STYLE,
 ) -> Tuple[bytes, str, str, List[str]]:
     """
     Synthesise the four parts in order, concatenate with `pause_sec` of silence between
     each non-empty pair, and return (encoded_bytes, media_type, file_extension, failures).
     `failures` lists per-voice errors (empty list when everything succeeded).
+    `intro_style` controls Voice 1: "full" → "Question N. <body>"; "number" → "N.".
     """
-    parts = voice_texts(question)
+    if intro_style not in INTRO_STYLES:
+        intro_style = DEFAULT_INTRO_STYLE
+    parts = voice_texts(question, intro_style=intro_style)
     qnum = question.get("number", "?")
     rendered: List[np.ndarray] = []
     sr: int = 0
@@ -111,6 +176,13 @@ def generate_question_audio(
         wav, sr_part = _render_one(engine, speaker_wav, txt, speed, qnum, idx, failures)
         if sr == 0 and sr_part:
             sr = sr_part
+        # Defence in depth: even though VoiceEngine._trim_trailing_noise already runs
+        # per-chunk inside the engine, peak normalisation in engine.generate scales
+        # the whole waveform and may revive tiny tail samples above the noise floor.
+        # Trim the assembled voice one more time so the gap between this voice and
+        # the next (pause_sec of zeros) is dead silent.
+        if wav.size > 0 and sr_part:
+            wav = VoiceEngine._trim_trailing_noise(wav, sr_part)
         rendered.append(wav)
 
     if sr == 0:

@@ -49,6 +49,11 @@
     return isFinite(v) ? Math.max(0, Math.min(10, v)) : 1.5;
   }
 
+  function currentIntroStyle() {
+    const el = document.querySelector('input[name="qIntroStyle"]:checked');
+    return el && el.value === "number" ? "number" : "full";
+  }
+
   // ---------- filesystem helpers ----------
   async function fileExists(parent, name) {
     try { await parent.getFileHandle(name, { create: false }); return true; }
@@ -94,14 +99,15 @@
   // ≈0.5s of 24 kHz mono PCM_16 ≈ 24 KB, so this is comfortably below normal output.
   const MIN_AUDIO_BYTES = 1024;
 
-  async function writeQuestionBlob(docDirHandle, qNumber, ext, blob) {
+  async function writeQuestionBlob(docDirHandle, qNumber, ext, blob, introStyle) {
     if (!blob || blob.size < MIN_AUDIO_BYTES) {
       // Don't even create the file. A 0-byte ".wav" causes Windows error 0xC00D36C4.
       throw new Error(
         `Server returned ${blob ? blob.size : 0} bytes — too small to be a real audio file.`
       );
     }
-    const fileSeg = fsSafeSegment(`Question ${qNumber}.${ext}`);
+    const base = introStyle === "number" ? `${qNumber}` : `Question ${qNumber}`;
+    const fileSeg = fsSafeSegment(`${base}.${ext}`);
     const unique = await uniqueFileNameFn(docDirHandle, fileSeg);
     let fh;
     try {
@@ -154,13 +160,14 @@
     return res.json();
   }
 
-  async function generateOneQuestion(voiceId, question, speed, fmt, pauseSec) {
+  async function generateOneQuestion(voiceId, question, speed, fmt, pauseSec, introStyle) {
     const fd = new FormData();
     fd.append("voice_id", voiceId);
     fd.append("question_json", JSON.stringify(question));
     fd.append("speed", String(speed));
     fd.append("format", fmt || "wav");
     fd.append("pause_seconds", String(pauseSec));
+    fd.append("intro_style", introStyle || "full");
     const key = localStorage.getItem("vct_api_key") || "";
     const res = await fetch("/api/questions/generate-one", {
       method: "POST",
@@ -305,6 +312,7 @@
 
     const fmt = currentFormat();
     const pauseSec = currentPauseSeconds();
+    const introStyle = currentIntroStyle();
 
     for (let i = 0; i < qDocQueue.length; i++) {
       if (qCancelRequested) break;
@@ -362,8 +370,8 @@
         updateProgressPanel();
 
         try {
-          const { blob, partial } = await generateOneQuestion(voiceId, q, speed, fmt, pauseSec);
-          await writeQuestionBlob(docDh, q.number, fmt, blob);
+          const { blob, partial } = await generateOneQuestion(voiceId, q, speed, fmt, pauseSec, introStyle);
+          await writeQuestionBlob(docDh, q.number, fmt, blob, introStyle);
           d.completed++;
           if (partial) {
             d.partialCount = (d.partialCount || 0) + 1;

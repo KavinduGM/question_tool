@@ -345,11 +345,15 @@ async def api_questions_generate_one(
     speed: float = Form(1.0),
     format: str = Form("wav"),
     pause_seconds: float = Form(question_audio.DEFAULT_PAUSE_SEC),
+    intro_style: str = Form(question_audio.DEFAULT_INTRO_STYLE),
 ):
     """
     Synthesise a single question's four voices and return one merged audio clip.
     Per-voice TTS failures are caught and substituted with silence; only a *total*
     failure (every voice broken or zero output) returns an HTTP error.
+
+    `intro_style` is "full" (default — Voice 1 = "Question N. <body>") or "number"
+    (Voice 1 = just "N." with no question body and the file named "N.<ext>").
     """
     import traceback as _tb
 
@@ -359,6 +363,7 @@ async def api_questions_generate_one(
     if not ref:
         raise HTTPException(404, "voice_id not found")
     fmt = _normalize_format(format)
+    style = intro_style if intro_style in question_audio.INTRO_STYLES else question_audio.DEFAULT_INTRO_STYLE
     try:
         question = json.loads(question_json)
     except json.JSONDecodeError:
@@ -374,6 +379,7 @@ async def api_questions_generate_one(
             speed=speed,
             fmt=fmt,
             pause_sec=pause_seconds,
+            intro_style=style,
         )
     except ValueError as e:
         print(f"[/api/questions/generate-one] Q{qnum} ValueError: {e}")
@@ -386,9 +392,9 @@ async def api_questions_generate_one(
         _tb.print_exc()
         raise HTTPException(500, f"Q{qnum} generation failed: {e}")
 
-    headers = {"Content-Disposition": f'attachment; filename="Question {qnum}.{ext}"'}
+    base_name = f"{qnum}" if style == "number" else f"Question {qnum}"
+    headers = {"Content-Disposition": f'attachment; filename="{base_name}.{ext}"'}
     if failures:
-        # Comma-joined and ASCII-safe for HTTP header transport.
         joined = "; ".join(failures)
         safe = joined.encode("ascii", "replace").decode("ascii")
         headers["X-Question-Voice-Failures"] = safe[:900]

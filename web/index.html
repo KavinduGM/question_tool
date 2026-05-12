@@ -152,6 +152,18 @@
       Pause between voices: <span id="qPauseVal">1.50</span>s
       <input type="range" id="qPause" min="0.0" max="5.0" step="0.1" value="1.5" style="flex:1; min-width:140px;" />
     </label>
+    <fieldset id="qIntroPicker" style="margin:8px 0; padding:6px 10px; border:1px solid #ccc;">
+      <legend style="padding:0 4px;">Question intro</legend>
+      <label style="margin-right:14px;">
+        <input type="radio" name="qIntroStyle" value="full" checked />
+        Full — Voice 1 says <code>"Question N. &lt;body&gt;"</code>, file saved as <code>Question N.&lt;ext&gt;</code>
+      </label>
+      <br />
+      <label>
+        <input type="radio" name="qIntroStyle" value="number" />
+        Number only — Voice 1 says just <code>"N."</code> (no question body), file saved as <code>N.&lt;ext&gt;</code>
+      </label>
+    </fieldset>
     <div class="msg" id="qParseMsg"></div>
     <div class="batch-progress">
       <div id="qProgressSummary" class="batch-progress-line"></div>

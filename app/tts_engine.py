@@ -241,6 +241,11 @@ class VoiceEngine:
                     speed=speed,
                 )
                 wav = np.array(wav, dtype=np.float32)
+                # XTTS's autoregressive decoder leaves a few frames of low-level
+                # "wind-down" hiss/click after the last phoneme. Trim it on every
+                # chunk so transitions to silence-gaps and to subsequent chunks
+                # are clean, with a short fade-out to avoid a step discontinuity.
+                wav = VoiceEngine._trim_trailing_noise(wav, sample_rate)
                 audio_parts.append(wav)
                 if i < len(chunks) - 1:
                     audio_parts.append(gap_short)
@@ -256,6 +261,37 @@ class VoiceEngine:
         if peak > 0.99:
             full = full * (0.99 / peak)
         return full, sample_rate
+
+    @staticmethod
+    def _trim_trailing_noise(
+        wav: np.ndarray,
+        sample_rate: int,
+        threshold_db: float = -40.0,
+        keep_tail_ms: float = 80.0,
+        fade_ms: float = 25.0,
+    ) -> np.ndarray:
+        """
+        Trim trailing samples below `threshold_db` (relative to full scale) and
+        apply a short fade-out so the cut point has no step discontinuity.
+        XTTS often leaves ~150–400 ms of low-energy garbage at the end of each
+        chunk; this removes it without touching legitimate speech.
+        """
+        if wav.size == 0:
+            return wav
+        threshold = 10.0 ** (threshold_db / 20.0)
+        abs_wav = np.abs(wav)
+        above = np.where(abs_wav > threshold)[0]
+        if above.size == 0:
+            return wav[:0]
+        last_idx = int(above[-1])
+        tail_samples = int(round(keep_tail_ms * sample_rate / 1000.0))
+        end = min(wav.size, last_idx + tail_samples + 1)
+        out = wav[:end].astype(np.float32, copy=True)
+        fade_n = min(int(round(fade_ms * sample_rate / 1000.0)), out.size)
+        if fade_n > 1:
+            ramp = np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
+            out[-fade_n:] *= ramp
+        return out
 
     @staticmethod
     def to_wav_bytes(wav: np.ndarray, sample_rate: int) -> bytes:
